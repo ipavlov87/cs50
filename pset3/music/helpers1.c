@@ -25,7 +25,7 @@ int frequency(string note)
     int hertz;
     float n = 0;    //total semitone distance from A4
 
-    switch(note[0])
+    switch (note[0])    //gets "base" octave value for frequency calculation
     {
         case 'A' :
             n += -2;
@@ -43,7 +43,7 @@ int frequency(string note)
             n += -2;
             break;
         default :
-            printf("You shouldn't see this\n" );
+            printf("You shouldn't see this\n");
     }
 
     if (isdigit(note[1]))   //factors in the distance of the octave, if no "#" or "b" is present
