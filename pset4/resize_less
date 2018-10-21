@@ -1,0 +1,135 @@
+// Copies a BMP file
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+#include "bmp.h"
+
+int main(int argc, char *argv[])
+{
+    // ensure proper usage
+    if (argc != 4)
+    {
+        fprintf(stderr, "Usage: executable scale_factor infile outfile\n");
+        return 1;
+    }
+
+    // remember filenames
+    int scale_factor = atoi(argv[1]);
+    char *infile = argv[2];
+    char *outfile = argv[3];
+
+    // open input file
+    FILE *inptr = fopen(infile, "r");
+    if (inptr == NULL)
+    {
+        fprintf(stderr, "Could not open %s.\n", infile);
+        return 2;
+    }
+
+    // open output file
+    FILE *outptr = fopen(outfile, "w");
+    if (outptr == NULL)
+    {
+        fclose(inptr);
+        fprintf(stderr, "Could not create %s.\n", outfile);
+        return 3;
+    }
+
+    // check scale factor
+    if ((scale_factor < 0 || scale_factor > 100) && !isdigit(scale_factor))
+    {
+        fprintf(stderr, "Scale factor needs to be between 0 and 100.\n");
+        return 4;
+    }
+
+    // read infile's BITMAPFILEHEADER
+    BITMAPFILEHEADER old_bf;
+    BITMAPFILEHEADER new_bf;
+    fread(&old_bf, sizeof(BITMAPFILEHEADER), 1, inptr);
+
+    // read infile's BITMAPINFOHEADER
+    BITMAPINFOHEADER old_bi;
+    BITMAPINFOHEADER new_bi;
+    fread(&old_bi, sizeof(BITMAPINFOHEADER), 1, inptr);
+
+    new_bf = old_bf;
+    new_bi = old_bi;
+
+    // ensure infile is (likely) a 24-bit uncompressed BMP 4.0
+    if (old_bf.bfType != 0x4d42 || old_bf.bfOffBits != 54 || old_bi.biSize != 40 ||
+        old_bi.biBitCount != 24 || old_bi.biCompression != 0)
+    {
+        fclose(outptr);
+        fclose(inptr);
+        fprintf(stderr, "Unsupported file format.\n");
+        return 4;
+    }
+
+    new_bi.biWidth = old_bi.biWidth * scale_factor;
+    new_bi.biHeight = old_bi.biHeight * scale_factor;
+
+    int new_padding = (4 - (new_bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
+
+    new_bi.biSizeImage = ((sizeof(RGBTRIPLE) * new_bi.biWidth) + new_padding) * abs(new_bi.biHeight);
+    new_bf.bfSize = new_bi.biSizeImage + sizeof(BITMAPINFOHEADER) + sizeof(BITMAPFILEHEADER);
+
+    // write outfile's BITMAPFILEHEADER
+    fwrite(&new_bf, sizeof(BITMAPFILEHEADER), 1, outptr);
+
+    // write outfile's BITMAPINFOHEADER
+    fwrite(&new_bi, sizeof(BITMAPINFOHEADER), 1, outptr);
+
+    // determine padding for scanlines
+    int old_padding = (4 - (old_bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
+
+    // for every row of pixels in the old image
+    for (int i = 0, old_biHeight = abs(old_bi.biHeight); i < old_biHeight; i++)
+    {
+        // repeat next action on each row scale-factor-number of times
+        for (int row_counter = 0; row_counter < scale_factor; row_counter++)
+        {
+            // for each pixel in each row of the old image
+            for (int j = 0; j < old_bi.biWidth; j++)
+            {
+                // temporary storage for each pixel
+                RGBTRIPLE triple;
+
+                // read RGB triple/pixel from infile's
+                fread(&triple, sizeof(RGBTRIPLE), 1, inptr);
+
+                //do this scale-factor-number of times
+                for (int column_counter = 0; column_counter < scale_factor; column_counter++)
+                {
+                    // write RGB triple to outfile
+                    fwrite(&triple, sizeof(RGBTRIPLE), 1, outptr);
+                }
+            }
+
+            // then add padding
+            for (int k = 0; k < new_padding; k++)
+            {
+                fputc(0x00, outptr);
+            }
+
+            // skip over old padding, if any
+            fseek(inptr, old_padding, SEEK_CUR);
+
+            // go back to start of row if not at last iteration
+            if (row_counter < scale_factor - 1)
+            {
+                fseek(inptr, -(old_bi.biWidth * sizeof(RGBTRIPLE) + old_padding), SEEK_CUR);
+            }
+        }
+    }
+
+    // close infile
+    fclose(inptr);
+
+    // close outfile
+    fclose(outptr);
+
+    // success
+    return 0;
+}
